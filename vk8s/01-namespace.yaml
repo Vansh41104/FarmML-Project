@@ -1,0 +1,8 @@
+# vwk8s/llama-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: at-paddock
+  labels:
+    name: at-paddock
+

@@ -1,0 +1,93 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build',
+    '-t', 'gcr.io/$PROJECT_ID/grass-weight-prediction:$SHORT_SHA',
+    '-t', 'gcr.io/$PROJECT_ID/grass-weight-prediction:latest',
+    '.'  # Assumes Dockerfile is in the root directory
+  ]
+  id: 'Build and Push Docker Image'
+
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+    - 'apply'
+    - '-f'
+    - 'vk8s/namespace.yaml'  # You'll need to create this file
+  env:
+    - 'CLOUDSDK_COMPUTE_ZONE=${_ZONE}'
+    - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
+  id: 'Create Namespace'
+  waitFor:
+    - 'Build and Push Docker Image'
+
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+    - 'create'
+    - 'secret'
+    - 'generic'
+    - 'gcp-key'
+    - '--from-file=key.json=${_SERVICE_ACCOUNT_KEY}'
+    - '-n'
+    - '${_NAMESPACE}'
+  env:
+    - 'CLOUDSDK_COMPUTE_ZONE=${_ZONE}'
+    - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
+  id: 'Create GCP Key Secret'
+  waitFor:
+    - 'Create Namespace'
+
+- name: 'gcr.io/cloud-builders/kubectl'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      cat <<EOF | kubectl apply -f -
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: grass-weight-prediction
+        namespace: ${_NAMESPACE}
+      spec:
+        template:
+          spec:
+            containers:
+            - name: grass-weight-prediction
+              image: gcr.io/$PROJECT_ID/grass-weight-prediction:$SHORT_SHA
+              args: [
+                "--predict",
+                "--bucket=${_BUCKET_NAME}",
+                "--project_id=$PROJECT_ID"
+              ]
+              env:
+              - name: GOOGLE_APPLICATION_CREDENTIALS
+                value: "/var/secrets/google/key.json"
+              volumeMounts:
+              - name: google-cloud-key
+                mountPath: /var/secrets/google
+            restartPolicy: Never
+            volumes:
+            - name: google-cloud-key
+              secret:
+                secretName: gcp-key
+        backoffLimit: 4
+      EOF
+  env:
+    - 'CLOUDSDK_COMPUTE_ZONE=${_ZONE}'
+    - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLUSTER_NAME}'
+  id: 'Deploy Grass Weight Prediction Job'
+  waitFor:
+    - 'Create GCP Key Secret'
+
+substitutions:
+  _ZONE: us-central1-a
+  _CLUSTER_NAME: njr-cluster
+  _NAMESPACE: default
+  _BUCKET_NAME: njr_paddockbucket
+  _SERVICE_ACCOUNT_KEY: agritwin-cv-5867208ae5d4.json
+
+images:
+- 'gcr.io/${PROJECT_ID}/grass-weight-prediction:${SHORT_SHA}'
+- 'gcr.io/${PROJECT_ID}/grass-weight-prediction:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

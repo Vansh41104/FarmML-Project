@@ -1,0 +1,33 @@
+# Use an official Python runtime as a base image
+FROM python:3.9-slim
+
+# Set environment variable to prevent Python from buffering stdout and stderr
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies for rasterio and other required packages
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libgdal-dev \
+    libgeos-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy the requirements file into the container
+COPY requirements.txt .
+
+# Install the Python dependencies specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application code into the container
+COPY . .
+
+# Set the environment variable for Google Cloud credentials if necessary
+# You can modify this path based on your credentials' location
+ENV GOOGLE_APPLICATION_CREDENTIALS=./your_google_credentials.json
+
+# Command to run your Python script with provided arguments
+ENTRYPOINT ["python", "quality.py"]

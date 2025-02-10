@@ -1,0 +1,3 @@
+from latsandlongs import PaddockProcessor
+from metadata import ImageMetadataProcessor
+from quality import ImageProcessor
